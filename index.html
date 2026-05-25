@@ -1271,7 +1271,10 @@ function getSign(r){
 function scorePoints(pred,real){
   if(!pred||!real) return 0;
   const ph=pred.home,pa=pred.away,rh=real.home,ra=real.away;
-  if(ph===''||ph===null||pa===''||pa===null||rh===''||rh===null||ra===''||ra===null) return 0;
+  // Strict check — reject any undefined, null, empty string or NaN
+  if(ph===''||ph===null||ph===undefined||pa===''||pa===null||pa===undefined) return 0;
+  if(rh===''||rh===null||rh===undefined||ra===''||ra===null||ra===undefined) return 0;
+  if(isNaN(parseInt(ph))||isNaN(parseInt(pa))||isNaN(parseInt(rh))||isNaN(parseInt(ra))) return 0;
   let p=0;
   if(getSign(pred)&&getSign(real)&&getSign(pred)===getSign(real)) p+=PTS.sign;
   if(String(ph)===String(rh)&&String(pa)===String(ra)) p+=PTS.exact;
@@ -1741,62 +1744,96 @@ function setPremio(k,v){S.preds[k]=v;updateProgress();}
 /* ══════════════════════════════════════════════════════════
    SCORING ENGINE
 ══════════════════════════════════════════════════════════ */
+// Returns true if a group has at least 1 real result entered
+function groupHasResults(g, rGroups){
+  return GROUP_MATCHES.filter(m=>m.group===g).some(m=>{
+    const r=rGroups[m.id];
+    return r&&r.home!==''&&r.home!==null&&r.home!==undefined&&r.away!==''&&r.away!==null&&r.away!==undefined;
+  });
+}
+// Returns true if ALL 6 matches of a group have real results
+function groupIsComplete(g, rGroups){
+  return GROUP_MATCHES.filter(m=>m.group===g).every(m=>{
+    const r=rGroups[m.id];
+    return r&&r.home!==''&&r.home!==null&&r.home!==undefined&&r.away!==''&&r.away!==null&&r.away!==undefined;
+  });
+}
+
 function calcScore(preds,results){
   let pts=0;
   const breakdown={};
   if(!preds||!results) return{pts,breakdown};
 
-  // Group match points
+  const rGroups=results.groups||{};
+  const rElim=results.elim||{};
+
+  // ── Group match points (only if that specific match has a real result) ──
   GROUP_MATCHES.forEach(m=>{
-    const pr=preds.groups?.[m.id],re=results.groups?.[m.id];
-    if(!re||!pr) return;
+    const pr=preds.groups?.[m.id],re=rGroups[m.id];
+    if(!re||re.home===''||re.home===null||re.home===undefined||re.away===''||re.away===null||re.away===undefined) return;
+    if(!pr||pr.home===''||pr.home===null||pr.home===undefined||pr.away===''||pr.away===null||pr.away===undefined) return;
     const p=scorePoints(pr,re);
     if(p>0){pts+=p;breakdown[m.id]=p;}
   });
 
-  // Group position + qualification
+  // ── Group position + qualification (only when ALL 6 matches of a group are done) ──
   Object.keys(GROUPS).forEach(g=>{
+    if(!groupIsComplete(g,rGroups)) return; // skip entirely if group not finished
     const{standings:pStand}=computeStandings(g,preds.groups||{},preds.tiebreaks||{});
-    const{standings:rStand}=computeStandings(g,results.groups||{},results.tiebreaks||{});
-    // pos1, pos2
-    if(rStand[0]&&pStand[0]&&rStand[0].name===pStand[0].name){pts+=PTS.pos1;breakdown[`pos1_${g}`]=PTS.pos1;}
-    if(rStand[1]&&pStand[1]&&rStand[1].name===pStand[1].name){pts+=PTS.pos2;breakdown[`pos2_${g}`]=PTS.pos2;}
-    // qualification (top2 + real best 8 thirds)
-    const rt8=getTop8Thirds(results.groups||{},results.tiebreaks||{}).map(t=>t.team);
-    const realQual=new Set([rStand[0]?.name,rStand[1]?.name,...rt8].filter(Boolean));
-    [pStand[0]?.name,pStand[1]?.name].filter(Boolean).forEach(team=>{
-      if(realQual.has(team)){pts+=PTS.qual;breakdown[`qual_${team}`]=PTS.qual;}
-    });
-    // Also check predicted thirds
-    const pt8=getTop8Thirds(preds.groups||{},preds.tiebreaks||{}).map(t=>t.team);
-    pt8.forEach(team=>{
-      if(realQual.has(team)&&!breakdown[`qual_${team}`]){pts+=PTS.qual;breakdown[`qual_${team}`]=PTS.qual;}
-    });
+    const{standings:rStand}=computeStandings(g,rGroups,results.tiebreaks||{});
+    // pos1 exact
+    if(rStand[0]?.name&&pStand[0]?.name&&rStand[0].name===pStand[0].name){pts+=PTS.pos1;breakdown[`pos1_${g}`]=PTS.pos1;}
+    // pos2 exact
+    if(rStand[1]?.name&&pStand[1]?.name&&rStand[1].name===pStand[1].name){pts+=PTS.pos2;breakdown[`pos2_${g}`]=PTS.pos2;}
   });
 
-  // Elim match points + classification
+  // ── Qualification to R32 (only when ALL 12 groups are complete) ──
+  const allGroupsDone=Object.keys(GROUPS).every(g=>groupIsComplete(g,rGroups));
+  if(allGroupsDone){
+    const rt8=getTop8Thirds(rGroups,results.tiebreaks||{}).map(t=>t.team);
+    Object.keys(GROUPS).forEach(g=>{
+      const{standings:rStand}=computeStandings(g,rGroups,results.tiebreaks||{});
+      const realQual=new Set([rStand[0]?.name,rStand[1]?.name,...rt8].filter(Boolean));
+      // Check predicted top-2
+      const{standings:pStand}=computeStandings(g,preds.groups||{},preds.tiebreaks||{});
+      [pStand[0]?.name,pStand[1]?.name].filter(Boolean).forEach(team=>{
+        if(realQual.has(team)&&!breakdown[`qual_${team}`]){pts+=PTS.qual;breakdown[`qual_${team}`]=PTS.qual;}
+      });
+      // Check predicted thirds
+      const pt8=getTop8Thirds(preds.groups||{},preds.tiebreaks||{}).map(t=>t.team);
+      pt8.forEach(team=>{
+        if(realQual.has(team)&&!breakdown[`qual_${team}`]){pts+=PTS.qual;breakdown[`qual_${team}`]=PTS.qual;}
+      });
+    });
+  }
+
+  // ── Elim match points + classification ──
   ELIM_PHASES.forEach(({phase,pts:phasePts,matches})=>{
     matches.forEach(m=>{
-      const pr=preds.elim?.[m.id],re=results.elim?.[m.id];
-      if(re&&pr){
+      const pr=preds.elim?.[m.id],re=rElim[m.id];
+      // Match score points — only if real result exists with valid scores
+      if(re&&re.home!==''&&re.home!==null&&re.home!==undefined&&
+         re.away!==''&&re.away!==null&&re.away!==undefined&&pr){
         const p=scorePoints(pr,re);
         if(p>0){pts+=p;breakdown[m.id+'_s']=p;}
       }
+      // Classification points — only if real winner is known
       if(phasePts>0){
-        const rW=getElimResult(m.id,results.elim||{},'winner');
+        const rW=getElimResult(m.id,rElim,'winner');
         const pW=getElimResult(m.id,preds.elim||{},'winner');
         if(rW&&pW&&rW===pW){pts+=phasePts;breakdown[m.id+'_c']=phasePts;}
       }
     });
   });
 
-  // Champion + premios
-  // Champion — derived from final match, not manual pick
-  const predChamp=getElimResult('m104',preds.elim||{},'winner')||preds.champion||'';
-  const realChamp=getElimResult('m104',results.elim||{},'winner')||results.champion||'';
+  // ── Champion (only if real winner of final is known) ──
+  const predChamp=getElimResult('m104',preds.elim||{},'winner')||'';
+  const realChamp=getElimResult('m104',rElim,'winner')||results.champion||'';
   if(realChamp&&predChamp&&nrm(predChamp)===nrm(realChamp)){pts+=PTS.champion;breakdown['champion']=PTS.champion;}
+
+  // ── Premios (only if real value is set) ──
   [{k:'balon',p:PTS.balon},{k:'maxGolEsp',p:PTS.maxGolEsp},{k:'mejorJoven',p:PTS.mejorJoven},{k:'maxGolesGol',p:PTS.maxGolesGol}].forEach(({k,p})=>{
-    if(results[k]&&preds[k]&&nrm(String(preds[k]))===nrm(String(results[k]))){pts+=p;breakdown[k]=p;}
+    if(results[k]&&String(results[k]).trim()!==''&&preds[k]&&nrm(String(preds[k]))===nrm(String(results[k]))){pts+=p;breakdown[k]=p;}
   });
 
   return{pts,breakdown};
@@ -1875,10 +1912,13 @@ function renderClasif(mc){
       </div>`;
     });
   } else {
-    // Ranking tab — locked until torneo starts
+    // Ranking tab — locked until torneo starts (admin sees preview but with note)
     if(S.torneoState==='open'&&!S.isAdmin){
       html+=`<div class="empty-state"><span class="icon">🔒</span>El ranking se muestra cuando empiece el torneo</div>`;
       mc.innerHTML=html;return;
+    }
+    if(S.torneoState==='open'&&S.isAdmin){
+      html+=`<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px;color:#fcd34d">⚠️ Vista previa solo para admin — los puntos solo se actualizan cuando introduzcas resultados reales.</div>`;
     }
     const scored=users.filter(u=>u.preds).map(u=>{
       const{pts,breakdown}=calcScore(u.preds,S.results);
