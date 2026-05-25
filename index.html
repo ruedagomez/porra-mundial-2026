@@ -202,6 +202,11 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
 .btn-state.live{background:rgba(240,180,41,.1);border-color:var(--gold);color:var(--gold)}
 .t3-reorder{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .t3-reorder-item{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:12px;cursor:grab}
+.btn-reset{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;border:1px solid var(--red-dim);background:rgba(239,68,68,.08);color:#fca5a5;cursor:pointer;transition:all .2s}
+.btn-reset:hover{background:rgba(239,68,68,.18);border-color:var(--red)}
+.reset-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.reset-section h3{font-size:13px;font-weight:700;color:var(--red);margin-bottom:12px}
+.reset-grid{display:flex;flex-wrap:wrap;gap:8px}
 
 .empty-state{text-align:center;padding:40px 20px;color:var(--txt-dim);font-size:13px}
 .empty-state .icon{font-size:36px;display:block;margin-bottom:8px;opacity:.5}
@@ -1852,9 +1857,70 @@ async function togglePaid(userId){
 /* ══════════════════════════════════════════════════════════
    ADMIN
 ══════════════════════════════════════════════════════════ */
+async function resetSection(section){
+  const labels={
+    grupos:'resultados de grupos',r32:'dieciseisavos',r16:'octavos',
+    qf:'cuartos',sf:'semis',final:'la final',p34:'el 3er puesto',
+    elim_all:'toda la eliminatoria',premios:'los premios',todo:'TODO'
+  };
+  const label=labels[section]||section;
+  if(!confirm(`¿Seguro que quieres borrar ${label}? Esta acción no se puede deshacer.`)) return;
+
+  const matchIdsForPhase=(phase)=>{
+    if(phase==='r32') return R32.map(m=>m.id);
+    if(phase==='r16') return R16.map(m=>m.id);
+    if(phase==='qf')  return QF.map(m=>m.id);
+    if(phase==='sf')  return SF.map(m=>m.id);
+    if(phase==='final') return FINAL.map(m=>m.id);
+    if(phase==='p34') return P34.map(m=>m.id);
+    return [];
+  };
+
+  if(section==='grupos'){
+    S.results.groups={};
+    S.results.tiebreaks={};
+  } else if(section==='elim_all'){
+    S.results.elim={};
+  } else if(section==='premios'){
+    S.results.balon='';S.results.maxGolEsp='';
+    S.results.mejorJoven='';S.results.maxGolesGol='';
+    S.results.champion='';
+  } else if(section==='todo'){
+    S.results={groups:{},tiebreaks:{},elim:{},balon:'',maxGolEsp:'',mejorJoven:'',maxGolesGol:'',champion:''};
+  } else {
+    // Phase-specific: clear only those match IDs
+    const ids=matchIdsForPhase(section);
+    if(!S.results.elim) S.results.elim={};
+    ids.forEach(id=>{ delete S.results.elim[id]; });
+  }
+
+  try{
+    await fbSet('config','results',sanitizeForFirebase(S.results));
+    toast(`✅ ${label} borrado`);
+    renderAdmin(document.getElementById('mc'));
+  }catch(e){toast('❌ '+e.message,'err');}
+}
+
 function renderAdmin(mc){
   if(!S.isAdmin){mc.innerHTML='';return;}
   let html=`<div class="section-header"><h2>Panel Admin</h2><p>Introduce los resultados reales.</p></div>`;
+
+  // Reset section
+  html+=`<div class="reset-section"><h3>🗑️ Limpiar datos</h3>
+  <p style="font-size:11px;color:var(--txt-dim);margin-bottom:12px">Borra todos los datos de una sección. Útil si algo se ha quedado en un estado incorrecto. <strong style="color:#fca5a5">Irreversible.</strong></p>
+  <div class="reset-grid">
+    <button class="btn-reset" onclick="resetSection('grupos')">🗂️ Grupos (resultados)</button>
+    <button class="btn-reset" onclick="resetSection('r32')">Dieciseisavos</button>
+    <button class="btn-reset" onclick="resetSection('r16')">Octavos</button>
+    <button class="btn-reset" onclick="resetSection('qf')">Cuartos</button>
+    <button class="btn-reset" onclick="resetSection('sf')">Semis</button>
+    <button class="btn-reset" onclick="resetSection('final')">Final</button>
+    <button class="btn-reset" onclick="resetSection('p34')">3er Puesto</button>
+    <button class="btn-reset" onclick="resetSection('elim_all')">🏟️ Todo Elim.</button>
+    <button class="btn-reset" onclick="resetSection('premios')">🏅 Premios</button>
+    <button class="btn-reset" onclick="resetSection('todo')" style="border-color:var(--red);color:var(--red);background:rgba(239,68,68,.15);font-weight:800">⚠️ TODO</button>
+  </div>
+  </div>`;
 
   // Estado
   html+=`<div class="admin-section"><h3>⚙️ Estado</h3>
