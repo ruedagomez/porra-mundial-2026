@@ -206,6 +206,28 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
 .empty-state{text-align:center;padding:40px 20px;color:var(--txt-dim);font-size:13px}
 .empty-state .icon{font-size:36px;display:block;margin-bottom:8px;opacity:.5}
 .jornada-label{font-size:11px;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
+
+/* PARTICIPANTS LIST */
+.participant-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.participant-card.me{border-color:var(--gold-dim);background:var(--gold-bg)}
+.participant-avatar{width:34px;height:34px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--txt-dim);flex-shrink:0;text-transform:uppercase}
+.participant-info{flex:1;min-width:0}
+.participant-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.participant-sub{font-size:11px;color:var(--txt-dim);margin-top:2px;display:flex;align-items:center;gap:6px}
+.progress-bar-outer{background:var(--border);border-radius:3px;height:4px;flex:1;overflow:hidden;margin-top:4px}
+.progress-bar-inner{height:100%;background:var(--gold);border-radius:3px;transition:width .4s ease}
+.progress-bar-inner.full{background:var(--green)}
+.paid-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;flex-shrink:0}
+.paid-badge.yes{background:rgba(34,197,94,.15);border:1px solid var(--green-dim);color:var(--green)}
+.paid-badge.no{background:rgba(239,68,68,.08);border:1px solid var(--red-dim);color:#fca5a5}
+.paid-toggle{background:none;border:none;padding:0;cursor:pointer;font-size:18px;flex-shrink:0;line-height:1}
+.clasif-tabs{display:flex;gap:6px;margin-bottom:14px}
+.clasif-tab{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--border);color:var(--txt-dim);cursor:pointer;transition:all .15s}
+.clasif-tab.active{background:var(--gold);color:#07090f;border-color:var(--gold)}
+.participants-summary{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap}
+.participants-summary .stat{text-align:center}
+.participants-summary .stat .val{font-size:20px;font-weight:700;color:var(--gold);display:block}
+.participants-summary .stat .lbl{font-size:10px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px}
 </style>
 </head>
 <body>
@@ -311,13 +333,13 @@ const R16=[
   {id:'m92',label:'Octavos 4',srcA:'m79',srcB:'m80'},
   {id:'m93',label:'Octavos 5',srcA:'m83',srcB:'m84'},
   {id:'m94',label:'Octavos 6',srcA:'m81',srcB:'m82'},
-  {id:'m95',label:'Octavos 7',srcA:'m86',srcB:'m87'},
-  {id:'m96',label:'Octavos 8',srcA:'m85',srcB:'m88'},
+  {id:'m95',label:'Octavos 7',srcA:'m86',srcB:'m88'},
+  {id:'m96',label:'Octavos 8',srcA:'m85',srcB:'m87'},
 ];
 const QF=[
-  {id:'m97', label:'Cuartos 1',srcA:'m90',srcB:'m89'},
-  {id:'m98', label:'Cuartos 2',srcA:'m91',srcB:'m92'},
-  {id:'m99', label:'Cuartos 3',srcA:'m93',srcB:'m94'},
+  {id:'m97', label:'Cuartos 1',srcA:'m89',srcB:'m90'},
+  {id:'m98', label:'Cuartos 2',srcA:'m93',srcB:'m94'},
+  {id:'m99', label:'Cuartos 3',srcA:'m91',srcB:'m92'},
   {id:'m100',label:'Cuartos 4',srcA:'m95',srcB:'m96'},
 ];
 const SF=[
@@ -843,7 +865,8 @@ let S={
   torneoState:'open',
   currentTab:'grupos',
   currentGroup:'A',
-  currentElimPhase:'r32',
+  currentElimPhase:'t3',
+  clasifView:'participants',
   preds:{
     groups:{},    // matchId→{home:N,away:N}
     tiebreaks:{}, // context_matchid→{winner:team} for group/t3 tiebreaks
@@ -1402,14 +1425,21 @@ function setT3Tiebreak(team){
    RENDER: ELIM
 ══════════════════════════════════════════════════════════ */
 function renderElim(mc){
+  // Default to terceros tab if coming fresh
+  if(S.currentElimPhase!=='t3'&&S.currentElimPhase!=='r32'&&S.currentElimPhase!=='r16'&&
+     S.currentElimPhase!=='qf'&&S.currentElimPhase!=='sf'&&S.currentElimPhase!=='final'&&S.currentElimPhase!=='p34'){
+    S.currentElimPhase='t3';
+  }
   let html=savebar();
   if(isLocked()) html+=lockedbar();
   html+=`<div class="section-header"><h2>Fase Eliminatoria</h2><p>Los equipos se rellenan automáticamente según tus pronósticos de grupos.</p></div>`;
   html+=`<div class="phase-tabs" id="etabs">`;
+  // Terceros FIRST
+  html+=`<button class="phase-tab${S.currentElimPhase==='t3'?' active':''}" onclick="selectElimPhase('t3')">🎯 Terceros</button>`;
+  // Then knockout rounds
   ELIM_PHASES.forEach(ph=>{
     html+=`<button class="phase-tab${ph.phase===S.currentElimPhase?' active':''}" onclick="selectElimPhase('${ph.phase}')">${ph.label}</button>`;
   });
-  html+=`<button class="phase-tab${S.currentElimPhase==='t3'?' active':''}" onclick="selectElimPhase('t3')">🎯 Terceros</button>`;
   html+=`</div><div id="elim-content"></div>`;
   mc.innerHTML=html;
   renderElimContent();
@@ -1418,7 +1448,8 @@ function renderElim(mc){
 function selectElimPhase(phase){
   S.currentElimPhase=phase;
   document.querySelectorAll('#etabs .phase-tab').forEach((b,i)=>{
-    const phases=[...ELIM_PHASES.map(p=>p.phase),'t3'];
+    // Order: t3 first, then ELIM_PHASES
+    const phases=['t3',...ELIM_PHASES.map(p=>p.phase)];
     b.classList.toggle('active',phases[i]===phase);
   });
   renderElimContent();
@@ -1428,6 +1459,16 @@ function renderElimContent(){
   const ec=document.getElementById('elim-content');
   if(!ec) return;
   if(S.currentElimPhase==='t3'){ec.innerHTML=renderThirdsPanel();return;}
+  // Block knockout phases until all 72 group matches are filled
+  const groupsDone=GROUP_MATCHES.filter(m=>{const r=S.preds.groups[m.id];return r&&r.home!==''&&r.home!==null&&r.home!==undefined&&r.away!==''&&r.away!==null&&r.away!==undefined;}).length;
+  if(groupsDone<72&&!S.isAdmin){
+    ec.innerHTML=`<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:20px;text-align:center">
+      <div style="font-size:24px;margin-bottom:10px">🔒</div>
+      <div style="font-weight:700;color:var(--amber);margin-bottom:6px">Completa los grupos primero</div>
+      <div style="font-size:12px;color:var(--txt-dim)">Has rellenado <strong style="color:var(--txt)">${groupsDone}/72</strong> partidos de grupos.<br>Completa los 72 para desbloquear el cuadro eliminatorio.</div>
+    </div>`;
+    return;
+  }
   const phObj=ELIM_PHASES.find(p=>p.phase===S.currentElimPhase);
   if(!phObj){ec.innerHTML='';return;}
   const locked=isLocked();
@@ -1531,15 +1572,19 @@ function renderPremios(mc){
   if(locked) html+=lockedbar();
   html+=`<div class="section-header"><h2>Premios &amp; Campeón</h2><p>Completa para sumar los últimos puntos.</p></div>`;
 
-  // Champion
-  const champ=p.champion||'';
-  const rChamp=r.champion||'';
+  // Champion — auto-derived from the final match prediction (no manual pick)
+  const champ=getElimResult('m104',S.preds.elim,'winner')||'';
+  const rChamp=r.champion||getElimResult('m104',S.results.elim,'winner')||'';
   const champHit=rChamp&&champ&&nrm(champ)===nrm(rChamp);
+  // Keep preds.champion in sync with the final result
+  if(champ) S.preds.champion=champ;
   html+=`<div class="premio-card">
   <h3>🏆 Campeón <span class="premio-pts">${PTS.champion} pts</span></h3>
-  ${rChamp?`<p style="font-size:11px;color:${champHit?'var(--green)':'var(--txt-dim)'};margin-bottom:8px">Real: <strong>${rChamp}</strong> ${champHit?'✅ +'+PTS.champion+' pts':''}</p>`:'<p style="font-size:11px;color:var(--txt-dim)">¿Qué selección levantará la copa?</p>'}
-  ${champ?`<div class="champ-selected"><span style="font-size:24px">${fl(champ)}</span>${champ}</div>`:''}
-  ${!locked?`<div class="champion-grid">${Object.values(GROUPS).flatMap(t=>t).map(t=>`<button class="champ-btn${champ===t?' selected':''}" onclick="setChampion('${esc(t)}')">${fl(t)} ${t}</button>`).join('')}</div>`:''}
+  ${rChamp?`<p style="font-size:11px;color:${champHit?'var(--green)':'var(--txt-dim)'};margin-bottom:8px">Campeón real: <strong>${rChamp}</strong> ${champHit?'✅ +'+PTS.champion+' pts':''}</p>`:''}
+  ${champ
+    ?`<div class="champ-selected"><span style="font-size:24px">${fl(champ)}</span>${champ}<span style="font-size:11px;color:var(--txt-dim);margin-left:8px">← de tu pronóstico de la Final</span></div>`
+    :`<div style="font-size:12px;color:var(--txt-dim);padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px">Rellena la Final en el cuadro eliminatorio para ver tu campeón aquí.</div>`
+  }
   </div>`;
 
   // Text fields
@@ -1620,7 +1665,10 @@ function calcScore(preds,results){
   });
 
   // Champion + premios
-  if(results.champion&&preds.champion&&nrm(preds.champion)===nrm(results.champion)){pts+=PTS.champion;breakdown['champion']=PTS.champion;}
+  // Champion — derived from final match, not manual pick
+  const predChamp=getElimResult('m104',preds.elim||{},'winner')||preds.champion||'';
+  const realChamp=getElimResult('m104',results.elim||{},'winner')||results.champion||'';
+  if(realChamp&&predChamp&&nrm(predChamp)===nrm(realChamp)){pts+=PTS.champion;breakdown['champion']=PTS.champion;}
   [{k:'balon',p:PTS.balon},{k:'maxGolEsp',p:PTS.maxGolEsp},{k:'mejorJoven',p:PTS.mejorJoven},{k:'maxGolesGol',p:PTS.maxGolesGol}].forEach(({k,p})=>{
     if(results[k]&&preds[k]&&nrm(String(preds[k]))===nrm(String(results[k]))){pts+=p;breakdown[k]=p;}
   });
@@ -1640,35 +1688,118 @@ function subscribeRT(){
   });
 }
 
+function calcUserProgress(preds){
+  if(!preds) return 0;
+  const gDone=GROUP_MATCHES.filter(m=>{const r=(preds.groups||{})[m.id];return r&&r.home!==''&&r.home!==null&&r.home!==undefined&&r.away!==''&&r.away!==null&&r.away!==undefined;}).length;
+  const eDone=ELIM_PHASES.reduce((a,ph)=>a+ph.matches.filter(m=>{const r=(preds.elim||{})[m.id];return r&&r.home!==''&&r.home!==null&&r.away!==''&&r.away!==null;}).length,0);
+  const pDone=(preds.balon?1:0)+(preds.maxGolEsp?1:0)+(preds.mejorJoven?1:0)+(preds.maxGolesGol!==''&&preds.maxGolesGol!==null&&preds.maxGolesGol!==undefined?1:0)+(preds.champion||(getElimResult('m104',preds.elim||{},'winner'))?1:0);
+  const total=GROUP_MATCHES.length+ELIM_PHASES.reduce((a,ph)=>a+ph.matches.length,0)+5;
+  return Math.round((gDone+eDone+pDone)/total*100);
+}
+
 function renderClasif(mc){
-  let html=`<div class="section-header"><h2>Clasificación</h2><p>Puntuación en tiempo real.</p></div>`;
-  if(S.torneoState==='open'&&!S.isAdmin){
-    html+=`<div class="empty-state"><span class="icon">🔒</span>La clasificación se muestra cuando empiece el torneo</div>`;
-    mc.innerHTML=html;return;
+  let html=`<div class="section-header"><h2>Clasificación</h2><p>Participantes, pagos y puntuación.</p></div>`;
+
+  // Tabs
+  html+=`<div class="clasif-tabs">
+    <button class="clasif-tab${S.clasifView==='participants'?' active':''}" onclick="setClasiView('participants')">👥 Participantes</button>
+    <button class="clasif-tab${S.clasifView==='ranking'?' active':''}" onclick="setClasiView('ranking')">🏆 Ranking</button>
+  </div>`;
+
+  // Filter out admin
+  const users=S.allUsers.filter(u=>u.id!==ADMIN_USER.toLowerCase());
+  const paid=users.filter(u=>u.paid).length;
+
+  html+=`<div class="participants-summary">
+    <div class="stat"><span class="val">${users.length}</span><span class="lbl">Inscritos</span></div>
+    <div class="stat"><span class="val" style="color:var(--green)">${paid}</span><span class="lbl">Pagados</span></div>
+    <div class="stat"><span class="val" style="color:var(--red)">${users.length-paid}</span><span class="lbl">Pendiente</span></div>
+    <div class="stat"><span class="val">${users.filter(u=>u.preds).length}</span><span class="lbl">Con pronóst.</span></div>
+  </div>`;
+
+  if(S.clasifView==='participants'){
+    // Participants list — visible to all always (open or live)
+    if(users.length===0){
+      html+=`<div class="empty-state"><span class="icon">😴</span>Nadie se ha registrado todavía</div>`;
+      mc.innerHTML=html;return;
+    }
+    // Sort: paid first, then by name
+    const sorted=[...users].sort((a,b)=>{
+      if(!!b.paid!==!!a.paid) return b.paid?1:-1;
+      return (a.nombre||a.id).localeCompare(b.nombre||b.id);
+    });
+    sorted.forEach(u=>{
+      const isMe=u.id===S.user?.toLowerCase();
+      const pct=calcUserProgress(u.preds);
+      const initials=(u.nombre||u.id).slice(0,2).toUpperCase();
+      const isPaid=!!u.paid;
+      html+=`<div class="participant-card${isMe?' me':''}">
+        <div class="participant-avatar">${initials}</div>
+        <div class="participant-info">
+          <div class="participant-name">${u.nombre||u.id}${isMe?'<span class="me-badge">Tú</span>':''}</div>
+          <div class="participant-sub">
+            <span>${pct}% completado</span>
+          </div>
+          <div class="progress-bar-outer"><div class="progress-bar-inner${pct===100?' full':''}" style="width:${pct}%"></div></div>
+        </div>
+        ${S.isAdmin
+          ?`<button class="paid-toggle" title="${isPaid?'Marcar como no pagado':'Marcar como pagado'}" onclick="togglePaid('${u.id}')">${isPaid?'✅':'⬜'}</button>`
+          :`<span class="paid-badge ${isPaid?'yes':'no'}">${isPaid?'✅ Pagado':'⏳ Pendiente'}</span>`
+        }
+      </div>`;
+    });
+  } else {
+    // Ranking tab — locked until torneo starts
+    if(S.torneoState==='open'&&!S.isAdmin){
+      html+=`<div class="empty-state"><span class="icon">🔒</span>El ranking se muestra cuando empiece el torneo</div>`;
+      mc.innerHTML=html;return;
+    }
+    const scored=users.filter(u=>u.preds).map(u=>{
+      const{pts,breakdown}=calcScore(u.preds,S.results);
+      return{...u,pts,breakdown};
+    }).sort((a,b)=>b.pts-a.pts);
+    if(scored.length===0){
+      html+=`<div class="empty-state"><span class="icon">😴</span>Nadie ha guardado pronósticos todavía</div>`;
+      mc.innerHTML=html;return;
+    }
+    html+=`<div class="rank-list">`;
+    scored.forEach((u,i)=>{
+      const isMe=u.id===S.user?.toLowerCase();
+      const pos=i+1;
+      const pc=pos===1?'g':pos===2?'s':pos===3?'b':'';
+      const medal=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
+      const champ=getElimResult('m104',u.preds?.elim||{},'winner')||u.preds?.champion||'';
+      const pct=calcUserProgress(u.preds);
+      html+=`<div class="rank-card${isMe?' me':''}">
+        <div class="rank-pos ${pc}">${medal}</div>
+        <div class="rank-info">
+          <div class="rank-name">${u.nombre||u.id}${isMe?'<span class="me-badge">Tú</span>':''}</div>
+          ${champ?`<div class="rank-sub">${fl(champ)} ${champ}</div>`:''}
+          <div class="rank-sub" style="margin-top:3px">${pct}% completado</div>
+        </div>
+        <div class="rank-pts-wrap"><span class="rank-pts">${u.pts}</span><span class="rank-pts-label">pts</span></div>
+      </div>`;
+    });
+    html+=`</div>`;
   }
-  const scored=S.allUsers.filter(u=>u.preds).map(u=>{
-    const{pts,breakdown}=calcScore(u.preds,S.results);
-    return{...u,pts,breakdown};
-  }).sort((a,b)=>b.pts-a.pts);
-  if(scored.length===0){html+=`<div class="empty-state"><span class="icon">😴</span>Nadie ha guardado pronósticos todavía</div>`;mc.innerHTML=html;return;}
-  html+=`<div class="rank-list">`;
-  scored.forEach((u,i)=>{
-    const isMe=u.id===S.user?.toLowerCase();
-    const pos=i+1;
-    const pc=pos===1?'g':pos===2?'s':pos===3?'b':'';
-    const medal=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
-    const champ=u.preds?.champion||'';
-    html+=`<div class="rank-card${isMe?' me':''}">
-      <div class="rank-pos ${pc}">${medal}</div>
-      <div class="rank-info">
-        <div class="rank-name">${u.nombre||u.id}${isMe?'<span class="me-badge">Tú</span>':''}</div>
-        ${champ?`<div class="rank-sub">${fl(champ)} ${champ}</div>`:''}
-      </div>
-      <div class="rank-pts-wrap"><span class="rank-pts">${u.pts}</span><span class="rank-pts-label">pts</span></div>
-    </div>`;
-  });
-  html+=`</div>`;
+
   mc.innerHTML=html;
+}
+
+function setClasiView(view){
+  S.clasifView=view;
+  renderClasif(document.getElementById('mc'));
+}
+
+async function togglePaid(userId){
+  if(!S.isAdmin) return;
+  const u=S.allUsers.find(u=>u.id===userId);
+  if(!u) return;
+  const newPaid=!u.paid;
+  try{
+    await fbSet('users',userId,{paid:newPaid});
+    toast(newPaid?'✅ Marcado como pagado':'Marcado como pendiente');
+  }catch(e){toast('Error: '+e.message,'err');}
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1903,7 +2034,7 @@ if(window._fbReady) window.dispatchEvent(new Event('fbReady'));
 // Expose globals
 Object.assign(window,{
   switchAuthTab,doLogin,doRegister,doLogout,saveAll,saveResults,
-  switchTab,selectGroup,selectElimPhase,setTiebreak,setT3Tiebreak,
+  switchTab,selectGroup,selectElimPhase,setTiebreak,setT3Tiebreak,setClasiView,togglePaid,
   setGroupScore,setElimScore,setPen,setChampion,setPremio,
   setAdminGroup,setAdminElim,setAdminGroupTie,setAdminT3Tie,setAdminResult,setTorneoState,
   adminGroup,
