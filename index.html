@@ -966,10 +966,26 @@ async function boot(){
     if(ud?.preds){
       S.preds={...S.preds,...ud.preds};
       // Strip cached homeTeam/awayTeam — always recalculate fresh from group standings
+      // Also sanitize any undefined values that may have slipped in previously
       if(S.preds.elim){
         Object.keys(S.preds.elim).forEach(k=>{
-          delete S.preds.elim[k].homeTeam;
-          delete S.preds.elim[k].awayTeam;
+          const e=S.preds.elim[k];
+          S.preds.elim[k]={
+            home:e.home??null,
+            away:e.away??null,
+            pen:e.pen??null
+            // homeTeam/awayTeam intentionally omitted — recalculated fresh
+          };
+        });
+      }
+      // Sanitize groups too
+      if(S.preds.groups){
+        Object.keys(S.preds.groups).forEach(k=>{
+          const g=S.preds.groups[k];
+          S.preds.groups[k]={
+            home:g.home??null,
+            away:g.away??null
+          };
         });
       }
     }
@@ -998,12 +1014,35 @@ const isLocked=()=>(S.torneoState!=='open')&&!S.isAdmin;
 /* ══════════════════════════════════════════════════════════
    SAVE
 ══════════════════════════════════════════════════════════ */
+function sanitizeForFirebase(obj){
+  // Recursively replace undefined with null — Firestore rejects undefined values
+  if(obj===undefined) return null;
+  if(obj===null||typeof obj!=='object') return obj;
+  if(Array.isArray(obj)) return obj.map(sanitizeForFirebase);
+  const out={};
+  for(const k of Object.keys(obj)){
+    out[k]=sanitizeForFirebase(obj[k]);
+  }
+  return out;
+}
+
 async function saveAll(){
   if(isLocked()){toast('Pronósticos cerrados','err');return;}
   const btn=document.getElementById('btn-save');
   if(btn){btn.disabled=true;btn.textContent='⏳';}
   try{
-    await fbSet('users',S.user.toLowerCase(),{preds:S.preds});
+    // Strip homeTeam/awayTeam from elim before saving — always recalculated fresh on load
+    const predsToSave=sanitizeForFirebase({
+      ...S.preds,
+      elim:Object.fromEntries(
+        Object.entries(S.preds.elim||{}).map(([k,v])=>[k,{
+          home:v.home??null,
+          away:v.away??null,
+          pen:v.pen??null
+        }])
+      )
+    });
+    await fbSet('users',S.user.toLowerCase(),{preds:predsToSave});
     toast('✅ Guardado');updateProgress();
   }catch(e){toast('❌ '+e.message,'err');}
   finally{if(btn){btn.disabled=false;btn.textContent='💾 Guardar';}}
@@ -2026,7 +2065,19 @@ async function setTorneoState(state){
 
 async function saveResults(){
   try{
-    await fbSet('config','results',S.results);
+    const resultsToSave=sanitizeForFirebase({
+      ...S.results,
+      elim:Object.fromEntries(
+        Object.entries(S.results.elim||{}).map(([k,v])=>[k,{
+          home:v.home??null,
+          away:v.away??null,
+          pen:v.pen??null,
+          homeTeam:v.homeTeam??null,
+          awayTeam:v.awayTeam??null
+        }])
+      )
+    });
+    await fbSet('config','results',resultsToSave);
     toast('✅ Resultados guardados');
   }catch(e){toast('❌ '+e.message,'err');}
 }
