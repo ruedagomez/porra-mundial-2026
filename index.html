@@ -1480,17 +1480,20 @@ function renderElimContent(){
     // Always recalculate teams fresh from group standings — never trust cached values
     let homeTeam=null;
     let awayTeam=null;
+    // Helper to resolve srcA/srcB codes including _loser suffix
+    const resolveSrc=(src)=>{
+      if(!src) return null;
+      if(src.endsWith('_loser')) return getElimResult(src.replace('_loser',''),S.preds.elim,'loser');
+      return getElimResult(src,S.preds.elim,'winner');
+    };
     if(m.home) homeTeam=resolveCode(m.home,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
-    else if(m.srcA) homeTeam=getElimResult(m.srcA,S.preds.elim,'winner');
+    else if(m.srcA) homeTeam=resolveSrc(m.srcA);
     if(m.away&&!m.away.startsWith('T3_')) awayTeam=resolveCode(m.away,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
     else if(m.away&&m.away.startsWith('T3_')){
       const assignments=computeT3Assignments(S.preds.groups,S.preds.tiebreaks);
       awayTeam=assignments[m.id]||null;
     }
-    if(!awayTeam&&m.srcB){
-      if(m.srcB.endsWith('_loser')) awayTeam=getElimResult(m.srcB.replace('_loser',''),S.preds.elim,'loser');
-      else awayTeam=getElimResult(m.srcB,S.preds.elim,'winner');
-    }
+    if(!awayTeam&&m.srcB) awayTeam=resolveSrc(m.srcB);
     // Store resolved teams so score inputs can reference them
     if(!S.preds.elim[m.id]) S.preds.elim[m.id]={home:'',away:'',pen:null};
     S.preds.elim[m.id].homeTeam=homeTeam;
@@ -1919,17 +1922,19 @@ function adminElimMatchHTML(m){
   const r=S.results.elim?.[m.id]||{};
   // Always recalculate teams fresh from results — never trust cached values
   let ht=null,at=null;
+  const resolveSrcR=(src)=>{
+    if(!src) return null;
+    if(src.endsWith('_loser')) return getElimResult(src.replace('_loser',''),S.results.elim||{},'loser');
+    return getElimResult(src,S.results.elim||{},'winner');
+  };
   if(m.home&&!m.home.startsWith('T3_')) ht=resolveCode(m.home,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
-  if(!ht&&m.srcA) ht=getElimResult(m.srcA,S.results.elim||{},'winner');
+  if(!ht&&m.srcA) ht=resolveSrcR(m.srcA);
   if(m.away&&!m.away.startsWith('T3_')) at=resolveCode(m.away,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
   else if(m.away&&m.away.startsWith('T3_')){
     const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
     at=assignments[m.id]||null;
   }
-  if(!at&&m.srcB){
-    if(m.srcB.endsWith('_loser')) at=getElimResult(m.srcB.replace('_loser',''),S.results.elim||{},'loser');
-    else at=getElimResult(m.srcB,S.results.elim||{},'winner');
-  }
+  if(!at&&m.srcB) at=resolveSrcR(m.srcB);
   if(!S.results.elim[m.id]) S.results.elim[m.id]={home:'',away:'',pen:null};
   S.results.elim[m.id].homeTeam=ht;
   S.results.elim[m.id].awayTeam=at;
