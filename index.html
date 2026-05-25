@@ -1534,10 +1534,15 @@ function renderElimContent(){
     if(isDraw&&homeTeam&&awayTeam&&!locked){
       const ph=pred.pen==='home',pa=pred.pen==='away';
       html+=`<div class="match-footer">
-        <span class="pen-label">Penaltis:</span>
+        <span class="pen-label">Penaltis — ¿quién clasifica?</span>
         <button class="pen-btn${ph?' active':''}" onclick="setPen('pred','${m.id}','home')">${fl(homeTeam)} ${homeTeam}</button>
         <button class="pen-btn${pa?' active':''}" onclick="setPen('pred','${m.id}','away')">${fl(awayTeam)} ${awayTeam}</button>
       </div>`;
+    } else if(isDraw&&(!homeTeam||!awayTeam)&&!locked){
+      html+=`<div class="match-footer"><span style="font-size:11px;color:var(--amber)">⚠️ Empate — define antes los partidos anteriores para elegir penaltis</span></div>`;
+    } else if(isDraw&&locked&&(pred.pen==='home'||pred.pen==='away')){
+      const penWinner=pred.pen==='home'?homeTeam:awayTeam;
+      html+=`<div class="match-footer"><span style="font-size:11px;color:var(--gold)">🏆 Clasifica en penaltis: <strong>${penWinner||'?'}</strong></span></div>`;
     }
     html+=`</div>`;
   });
@@ -1960,10 +1965,12 @@ function adminElimMatchHTML(m){
   if(isDraw&&ht&&at){
     const ph=r.pen==='home',pa=r.pen==='away';
     html+=`<div class="match-footer">
-      <span class="pen-label">Clasifica (penaltis):</span>
+      <span class="pen-label">Clasifica en penaltis:</span>
       <button class="pen-btn${ph?' active':''}" onclick="setPen('result','${m.id}','home')">${fl(ht)} ${ht}</button>
       <button class="pen-btn${pa?' active':''}" onclick="setPen('result','${m.id}','away')">${fl(at)} ${at}</button>
     </div>`;
+  } else if(isDraw&&(!ht||!at)){
+    html+=`<div class="match-footer"><span style="font-size:11px;color:var(--amber)">⚠️ Empate — introduce antes los partidos anteriores</span></div>`;
   }
   html+=`</div>`;
   return html;
