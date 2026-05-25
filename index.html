@@ -1063,6 +1063,65 @@ function updateProgress(){
   if(pill){pill.textContent=pct+'%';pill.classList.toggle('done',pct===100);}
 }
 
+async function resetUserSection(section){
+  const labels={
+    grupos:'tus pronósticos de grupos',
+    elim_r32:'tus dieciseisavos',
+    elim_r16:'tus octavos',
+    elim_qf:'tus cuartos',
+    elim_sf:'tus semis',
+    elim_final:'tu final',
+    elim_p34:'tu 3er puesto',
+    elim_all:'toda tu eliminatoria',
+    premios:'tus premios y campeón',
+    todo:'todos tus pronósticos'
+  };
+  if(!confirm(`¿Seguro que quieres borrar ${labels[section]||section}? No se puede deshacer.`)) return;
+
+  const matchIdsForPhase=(phase)=>{
+    if(phase==='r32') return R32.map(m=>m.id);
+    if(phase==='r16') return R16.map(m=>m.id);
+    if(phase==='qf')  return QF.map(m=>m.id);
+    if(phase==='sf')  return SF.map(m=>m.id);
+    if(phase==='final') return FINAL.map(m=>m.id);
+    if(phase==='p34') return P34.map(m=>m.id);
+    return [];
+  };
+
+  if(section==='grupos'){
+    S.preds.groups={};
+    S.preds.tiebreaks={};
+  } else if(section==='elim_all'){
+    S.preds.elim={};
+  } else if(section==='premios'){
+    S.preds.balon='';S.preds.maxGolEsp='';
+    S.preds.mejorJoven='';S.preds.maxGolesGol='';
+    S.preds.champion='';
+  } else if(section==='todo'){
+    S.preds={groups:{},tiebreaks:{},elim:{},balon:'',maxGolEsp:'',mejorJoven:'',maxGolesGol:'',champion:''};
+  } else if(section.startsWith('elim_')){
+    const phase=section.replace('elim_','');
+    const ids=matchIdsForPhase(phase);
+    if(!S.preds.elim) S.preds.elim={};
+    ids.forEach(id=>{ delete S.preds.elim[id]; });
+  }
+
+  try{
+    const predsToSave=sanitizeForFirebase({
+      ...S.preds,
+      elim:Object.fromEntries(
+        Object.entries(S.preds.elim||{}).map(([k,v])=>[k,{
+          home:v.home??null,away:v.away??null,pen:v.pen??null
+        }])
+      )
+    });
+    await fbSet('users',S.user.toLowerCase(),{preds:predsToSave});
+    toast(`✅ ${labels[section]||section} borrado`);
+    updateProgress();
+    switchTab(S.currentTab); // re-render current tab
+  }catch(e){toast('❌ '+e.message,'err');}
+}
+
 /* ══════════════════════════════════════════════════════════
    GROUP STANDINGS ENGINE
 ══════════════════════════════════════════════════════════ */
@@ -1243,9 +1302,16 @@ const esc=s=>(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 /* ══════════════════════════════════════════════════════════
    SAVE BAR HTML
 ══════════════════════════════════════════════════════════ */
-function savebar(){
+function savebar(resetButtons){
   const pct=Math.round(progress());
-  return`<div class="save-bar"><span style="font-size:12px;color:var(--txt-dim)">Progreso</span><span id="progress-pill" class="progress-pill${pct===100?' done':''}">${pct}%</span><button class="btn-save" id="btn-save" onclick="saveAll()"${isLocked()?'disabled':''}>💾 Guardar</button></div>`;
+  let html=`<div class="save-bar"><span style="font-size:12px;color:var(--txt-dim)">Progreso</span><span id="progress-pill" class="progress-pill${pct===100?' done':''}">${pct}%</span><button class="btn-save" id="btn-save" onclick="saveAll()"${isLocked()?'disabled':''}>💾 Guardar</button></div>`;
+  if(!isLocked()&&resetButtons){
+    html+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);align-items:center">
+      <span style="font-size:11px;color:var(--txt-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;margin-bottom:4px">🗑️ Limpiar mis pronósticos:</span>
+      ${resetButtons.map(b=>`<button class="btn-reset" style="font-size:11px;padding:5px 10px" onclick="resetUserSection('${b.key}')">${b.label}</button>`).join('')}
+    </div>`;
+  }
+  return html;
 }
 function lockedbar(){return`<div class="locked-bar">🔒 Pronósticos cerrados</div>`;}
 function progress(){
@@ -1260,7 +1326,8 @@ function progress(){
    RENDER: GRUPOS
 ══════════════════════════════════════════════════════════ */
 function renderGrupos(mc){
-  let html=savebar();
+  const resetBtns=[{key:'grupos',label:'Grupos'}];
+  let html=savebar(resetBtns);
   if(isLocked()) html+=lockedbar();
   html+=`<div class="section-header"><h2>Fase de Grupos</h2><p>Introduce el marcador. La tabla se calcula sola.</p></div>`;
   // Group tabs
@@ -1474,7 +1541,13 @@ function renderElim(mc){
      S.currentElimPhase!=='qf'&&S.currentElimPhase!=='sf'&&S.currentElimPhase!=='final'&&S.currentElimPhase!=='p34'){
     S.currentElimPhase='t3';
   }
-  let html=savebar();
+  const resetElimBtns=[
+    {key:'elim_r32',label:'16avos'},{key:'elim_r16',label:'Octavos'},
+    {key:'elim_qf',label:'Cuartos'},{key:'elim_sf',label:'Semis'},
+    {key:'elim_final',label:'Final'},{key:'elim_p34',label:'3º Puesto'},
+    {key:'elim_all',label:'⚠️ Toda Elim.'}
+  ];
+  let html=savebar(resetElimBtns);
   if(isLocked()) html+=lockedbar();
   html+=`<div class="section-header"><h2>Fase Eliminatoria</h2><p>Los equipos se rellenan automáticamente según tus pronósticos de grupos.</p></div>`;
   html+=`<div class="phase-tabs" id="etabs">`;
@@ -1620,7 +1693,8 @@ function renderPremios(mc){
   const locked=isLocked();
   const p=S.preds;
   const r=S.results;
-  let html=savebar();
+  const resetPremiosBtns=[{key:'premios',label:'Premios'}];
+  let html=savebar(resetPremiosBtns);
   if(locked) html+=lockedbar();
   html+=`<div class="section-header"><h2>Premios &amp; Campeón</h2><p>Completa para sumar los últimos puntos.</p></div>`;
 
