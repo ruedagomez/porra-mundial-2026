@@ -940,7 +940,16 @@ async function boot(){
   if(res){S.results={...S.results,...res};}
   if(!S.isAdmin){
     const ud=await fbGet('users',S.user.toLowerCase());
-    if(ud?.preds) S.preds={...S.preds,...ud.preds};
+    if(ud?.preds){
+      S.preds={...S.preds,...ud.preds};
+      // Strip cached homeTeam/awayTeam — always recalculate fresh from group standings
+      if(S.preds.elim){
+        Object.keys(S.preds.elim).forEach(k=>{
+          delete S.preds.elim[k].homeTeam;
+          delete S.preds.elim[k].awayTeam;
+        });
+      }
+    }
   }
   document.getElementById('auth-overlay').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -1427,31 +1436,24 @@ function renderElimContent(){
     const pred=S.preds.elim[m.id]||{};
     const real=S.results.elim?.[m.id];
 
-    // Resolve teams
-    let homeTeam=pred.homeTeam||null;
-    let awayTeam=pred.awayTeam||null;
-    if(!homeTeam){
-      if(m.home) homeTeam=resolveCode(m.home,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
-      else if(m.srcA) homeTeam=getElimResult(m.srcA,S.preds.elim,'winner');
+    // Always recalculate teams fresh from group standings — never trust cached values
+    let homeTeam=null;
+    let awayTeam=null;
+    if(m.home) homeTeam=resolveCode(m.home,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
+    else if(m.srcA) homeTeam=getElimResult(m.srcA,S.preds.elim,'winner');
+    if(m.away&&!m.away.startsWith('T3_')) awayTeam=resolveCode(m.away,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
+    else if(m.away&&m.away.startsWith('T3_')){
+      const assignments=computeT3Assignments(S.preds.groups,S.preds.tiebreaks);
+      awayTeam=assignments[m.id]||null;
     }
-    if(!awayTeam){
-      if(m.away&&!m.away.startsWith('T3_')) awayTeam=resolveCode(m.away,S.preds.groups,S.preds.tiebreaks,S.preds.elim);
-      else if(m.away&&m.away.startsWith('T3_')){
-        const assignments=computeT3Assignments(S.preds.groups,S.preds.tiebreaks);
-        awayTeam=assignments[m.id]||null;
-      }
-      else if(m.srcA&&m.away===undefined) awayTeam=null;
-      if(!awayTeam&&m.srcB){
-        if(m.srcB.endsWith('_loser')) awayTeam=getElimResult(m.srcB.replace('_loser',''),S.preds.elim,'loser');
-        else awayTeam=getElimResult(m.srcB,S.preds.elim,'winner');
-      }
+    if(!awayTeam&&m.srcB){
+      if(m.srcB.endsWith('_loser')) awayTeam=getElimResult(m.srcB.replace('_loser',''),S.preds.elim,'loser');
+      else awayTeam=getElimResult(m.srcB,S.preds.elim,'winner');
     }
-    // Store resolved teams
-    if(homeTeam||awayTeam){
-      if(!S.preds.elim[m.id]) S.preds.elim[m.id]={home:'',away:'',pen:null};
-      S.preds.elim[m.id].homeTeam=homeTeam;
-      S.preds.elim[m.id].awayTeam=awayTeam;
-    }
+    // Store resolved teams so score inputs can reference them
+    if(!S.preds.elim[m.id]) S.preds.elim[m.id]={home:'',away:'',pen:null};
+    S.preds.elim[m.id].homeTeam=homeTeam;
+    S.preds.elim[m.id].awayTeam=awayTeam;
 
     const hv=pred.home!==''&&pred.home!==null&&pred.home!==undefined?pred.home:'';
     const av=pred.away!==''&&pred.away!==null&&pred.away!==undefined?pred.away:'';
@@ -1784,31 +1786,22 @@ function adminGroupHTML(g){
 
 function adminElimMatchHTML(m){
   const r=S.results.elim?.[m.id]||{};
-  // Resolve teams from results
-  let ht=r.homeTeam||null,at=r.awayTeam||null;
-  if(!ht){
-    if(m.home&&!m.home.startsWith('T3_')) ht=resolveCode(m.home,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
-    else if(m.home&&m.home.startsWith('T3_')){
-      const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
-      ht=null; // home is always a group winner/runner-up
-    }
-    if(!ht&&m.srcA) ht=getElimResult(m.srcA,S.results.elim||{},'winner');
+  // Always recalculate teams fresh from results — never trust cached values
+  let ht=null,at=null;
+  if(m.home&&!m.home.startsWith('T3_')) ht=resolveCode(m.home,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
+  if(!ht&&m.srcA) ht=getElimResult(m.srcA,S.results.elim||{},'winner');
+  if(m.away&&!m.away.startsWith('T3_')) at=resolveCode(m.away,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
+  else if(m.away&&m.away.startsWith('T3_')){
+    const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
+    at=assignments[m.id]||null;
   }
-  if(!at){
-    if(m.away&&!m.away.startsWith('T3_')) at=resolveCode(m.away,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
-    else if(m.away&&m.away.startsWith('T3_')){
-      const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
-      at=assignments[m.id]||null;
-    }
-    if(!at&&m.srcB){
-      if(m.srcB.endsWith('_loser')) at=getElimResult(m.srcB.replace('_loser',''),S.results.elim||{},'loser');
-      else at=getElimResult(m.srcB,S.results.elim||{},'winner');
-    }
+  if(!at&&m.srcB){
+    if(m.srcB.endsWith('_loser')) at=getElimResult(m.srcB.replace('_loser',''),S.results.elim||{},'loser');
+    else at=getElimResult(m.srcB,S.results.elim||{},'winner');
   }
-  if(ht||at){
-    if(!S.results.elim[m.id]) S.results.elim[m.id]={home:'',away:'',pen:null};
-    S.results.elim[m.id].homeTeam=ht;S.results.elim[m.id].awayTeam=at;
-  }
+  if(!S.results.elim[m.id]) S.results.elim[m.id]={home:'',away:'',pen:null};
+  S.results.elim[m.id].homeTeam=ht;
+  S.results.elim[m.id].awayTeam=at;
   const hv=r.home!==''&&r.home!==null&&r.home!==undefined?r.home:'';
   const av=r.away!==''&&r.away!==null&&r.away!==undefined?r.away:'';
   const sign=getSign(r);
