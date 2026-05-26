@@ -276,6 +276,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
     <button class="nav-btn" onclick="switchTab('elim')" id="nav-elim"><span class="icon">🏟️</span>Elim.</button>
     <button class="nav-btn" onclick="switchTab('premios')" id="nav-premios"><span class="icon">🏅</span>Premios</button>
     <button class="nav-btn" onclick="switchTab('clasif')" id="nav-clasif"><span class="icon">🏆</span>Clasif.</button>
+    <button class="nav-btn" onclick="switchTab('reglas')" id="nav-reglas"><span class="icon">📋</span>Reglas</button>
     <button class="nav-btn hidden" onclick="switchTab('admin')" id="nav-admin"><span class="icon">⚙️</span>Admin</button>
   </nav>
 </div>
@@ -1288,7 +1289,7 @@ const nrm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'
 ══════════════════════════════════════════════════════════ */
 function switchTab(tab){
   S.currentTab=tab;
-  ['grupos','elim','premios','clasif','admin'].forEach(t=>{
+  ['grupos','elim','premios','clasif','admin','reglas'].forEach(t=>{
     const n=document.getElementById('nav-'+t);
     if(n) n.classList.toggle('active',t===tab);
   });
@@ -1298,6 +1299,7 @@ function switchTab(tab){
   else if(tab==='premios') renderPremios(mc);
   else if(tab==='clasif') renderClasif(mc);
   else if(tab==='admin') renderAdmin(mc);
+  else if(tab==='reglas') renderReglas(mc);
 }
 
 const esc=s=>(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -2260,6 +2262,154 @@ async function saveResults(){
     await fbSet('config','results',resultsToSave);
     toast('✅ Resultados guardados');
   }catch(e){toast('❌ '+e.message,'err');}
+}
+
+/* ══════════════════════════════════════════════════════════
+   REGLAS
+══════════════════════════════════════════════════════════ */
+function renderReglas(mc){
+  mc.innerHTML=`
+  <div class="section-header"><h2>📋 Reglas &amp; Puntuación</h2><p>Sistema de puntos oficial de La Porra 2026.</p></div>
+
+  <!-- GRUPOS -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+    <div style="background:var(--surface);padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">🗂️</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--gold)">Fase de Grupos — 72 partidos</span>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600">Signo correcto (1, X o 2)</div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:2px">Aciertas quién gana o si hay empate</div>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+2 pts</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600">Resultado exacto</div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:2px">El marcador es exactamente el que pusiste</div>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+5 pts</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600">1º clasificado exacto por grupo</div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:2px">× 12 grupos = hasta 60 pts</div>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+5 pts</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600">2º clasificado exacto por grupo</div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:2px">× 12 grupos = hasta 60 pts</div>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+5 pts</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600">Equipo clasificado a 16avos</div>
+          <div style="font-size:11px;color:var(--txt-dim);margin-top:2px">Sin importar posición — 32 equipos × 10 pts = hasta 320 pts</div>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+10 pts</div>
+      </div>
+      <div style="font-size:11px;color:var(--txt-dim);padding:8px 12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:8px">
+        ℹ️ El resultado exacto (5 pts) ya incluye el signo (2 pts). No se acumulan ambos — se puntúa el mayor.
+      </div>
+    </div>
+  </div>
+
+  <!-- ELIMINATORIAS -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+    <div style="background:var(--surface);padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">🏟️</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--gold)">Fase Eliminatoria — 32 partidos</span>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div><div style="font-size:13px;font-weight:600">Signo correcto (1, X o 2)</div><div style="font-size:11px;color:var(--txt-dim);margin-top:2px">Incluye si va a penaltis</div></div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+2 pts</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div><div style="font-size:13px;font-weight:600">Resultado exacto</div><div style="font-size:11px;color:var(--txt-dim);margin-top:2px">Marcador exacto (sin contar penaltis)</div></div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+5 pts</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:4px">+ por acertar el clasificado:</div>
+      ${[
+        {r:'Dieciseisavos',p:20,n:16},{r:'Octavos',p:40,n:8},
+        {r:'Cuartos',p:85,n:4},{r:'Semis',p:150,n:2},
+        {r:'Final',p:150,n:1},{r:'3er y 4º Puesto',p:0,n:1}
+      ].map(({r,p,n})=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div><div style="font-size:13px;font-weight:600">${r}</div><div style="font-size:11px;color:var(--txt-dim);margin-top:2px">${n} partido${n>1?'s':''} × ${p} pts = hasta ${n*p} pts${p===0?' (no puntúa clasificación)':''}</div></div>
+        <div style="font-size:20px;font-weight:700;color:${p>0?'var(--gold)':'var(--txt-dim)'};flex-shrink:0;margin-left:12px">${p>0?'+'+p+' pts':'0 pts'}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- PREMIOS -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+    <div style="background:var(--surface);padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">🏅</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--gold)">Premios Especiales</span>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+      ${[
+        {icon:'🏆',label:'Campeón del Mundial',desc:'Se deriva de tu pronóstico de la Final — no hay selección manual',pts:250},
+        {icon:'🌟',label:'Balón de Oro',desc:'Mejor jugador del torneo',pts:30},
+        {icon:'⚽',label:'Máx. Goleador España',desc:'Jugador español con más goles',pts:30},
+        {icon:'👶',label:'Mejor Jugador Joven',desc:'Nacido a partir del 1 enero 2005',pts:20},
+        {icon:'🔢',label:'Goles del pichichi',desc:'Número exacto de goles del máximo goleador',pts:10},
+      ].map(({icon,label,desc,pts})=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border-radius:8px">
+        <div><div style="font-size:13px;font-weight:600">${icon} ${label}</div><div style="font-size:11px;color:var(--txt-dim);margin-top:2px">${desc}</div></div>
+        <div style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0;margin-left:12px">+${pts} pts</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- MÁXIMO TEÓRICO -->
+  <div style="background:var(--card);border:1px solid var(--gold-dim);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+    <div style="background:var(--gold-bg);padding:9px 14px;border-bottom:1px solid var(--gold-dim);display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">📊</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;color:var(--gold)">Total Máximo Teórico</span>
+    </div>
+    <div style="padding:14px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        ${[
+          ['Signos grupos','72 × 2',144],
+          ['Exactos grupos','72 × 5',360],
+          ['1º clasificado','12 × 5',60],
+          ['2º clasificado','12 × 5',60],
+          ['Clasificados 16avos','32 × 10',320],
+          ['Signos eliminatoria','32 × 2',64],
+          ['Exactos eliminatoria','32 × 5',160],
+          ['Clasif. Dieciseisavos','16 × 20',320],
+          ['Clasif. Octavos','8 × 40',320],
+          ['Clasif. Cuartos','4 × 85',340],
+          ['Clasif. Semis','2 × 150',300],
+          ['Clasif. Final','1 × 150',150],
+          ['Campeón','1 × 250',250],
+          ['Balón de Oro','—',30],
+          ['Goleador España','—',30],
+          ['Mejor Joven','—',20],
+          ['Goles pichichi','—',10],
+        ].map(([label,calc,pts],i)=>`
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--txt-dim)">${label}</td>
+          <td style="padding:6px 4px;color:var(--txt-dim);text-align:center">${calc}</td>
+          <td style="padding:6px 4px;text-align:right;font-weight:600">${pts}</td>
+        </tr>`).join('')}
+        <tr style="background:var(--gold-bg)">
+          <td style="padding:10px 4px;font-weight:700;color:var(--gold)" colspan="2">TOTAL MÁXIMO</td>
+          <td style="padding:10px 4px;text-align:right;font-size:18px;font-weight:700;color:var(--gold)">2.938</td>
+        </tr>
+      </table>
+      <div style="margin-top:12px;font-size:11px;color:var(--txt-dim);background:var(--surface);border-radius:8px;padding:10px">
+        ⚡ En la práctica, una puntuación competitiva suele estar entre <strong style="color:var(--txt)">400 y 900 pts</strong>. Acertar el campeón (+250) y los clasificados de las últimas rondas son los mayores diferenciadores.
+      </div>
+    </div>
+  </div>`;
 }
 
 /* ══════════════════════════════════════════════════════════
