@@ -888,7 +888,8 @@ let S={
     champion:''
   },
   allUsers:[],
-  unsub:null
+  unsub:null,
+  unsubResults:null
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -951,6 +952,7 @@ async function doRegister(){
 
 async function doLogout(){
   if(S.unsub){S.unsub();S.unsub=null;}
+  if(S.unsubResults){S.unsubResults();S.unsubResults=null;}
   localStorage.removeItem('p26');
   S.user=null;S.isAdmin=false;
   document.getElementById('app').classList.add('hidden');
@@ -1846,10 +1848,26 @@ function calcScore(preds,results){
 ══════════════════════════════════════════════════════════ */
 function subscribeRT(){
   if(S.unsub){S.unsub();S.unsub=null;}
-  const{collection,onSnapshot}=fns();
+  if(S.unsubResults){S.unsubResults();S.unsubResults=null;}
+  const{collection,doc,onSnapshot}=fns();
+
+  // Listen to users collection
   S.unsub=onSnapshot(collection(db(),'users'),snap=>{
     S.allUsers=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(S.currentTab==='clasif') renderClasif(document.getElementById('mc'));
+  });
+
+  // Listen to results doc — re-renders ranking and shows pts when admin saves
+  S.unsubResults=onSnapshot(doc(db(),'config','results'),snap=>{
+    if(snap.exists()){
+      S.results={...S.results,...snap.data()};
+      // Re-render whatever tab is active that depends on results
+      const mc=document.getElementById('mc');
+      if(S.currentTab==='clasif') renderClasif(mc);
+      else if(S.currentTab==='grupos') renderGroupContent();
+      else if(S.currentTab==='elim') renderElimContent();
+      else if(S.currentTab==='premios') renderPremios(mc);
+    }
   });
 }
 
