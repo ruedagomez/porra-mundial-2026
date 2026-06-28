@@ -834,6 +834,11 @@ const COMBO_TABLE=[
 ["ABCDEFGHI","H","G","E","C","A","F","D","I"],
 ];
 
+// ── REAL 2026 COMBINATION (confirmed from actual bracket) ──
+// Groups B,D,E,F,I,J,K,L → Ecuador(E) to m79, Argelia(J) to m85, Bosnia(B) to m81,
+// Paraguay(D) to m74, Senegal(I) to m82, Suecia(F) to m77, Ghana(L) to m87, Congo(K) to m80
+["BDEFIJKL","E","J","B","D","I","F","L","K"],
+
 // Build lookup map
 const COMBO_MAP={};
 COMBO_TABLE.forEach(([key,...vals])=>{
@@ -889,7 +894,8 @@ let S={
   },
   allUsers:[],
   unsub:null,
-  unsubResults:null
+  unsubResults:null,
+  _editingMatch:null
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -1706,7 +1712,7 @@ function renderPremios(mc){
   html+=`<div class="section-header"><h2>Premios &amp; Campeón</h2><p>Completa para sumar los últimos puntos.</p></div>`;
 
   // Champion — auto-derived from the final match prediction (no manual pick)
-  const champ=getElimResult('m104',S.preds.elim,'winner')||'';
+  const champ=resolveUserElimMatch('m104',S.preds)?.winner||'';
   const rChamp=r.champion||getElimResult('m104',S.results.elim,'winner')||'';
   const champHit=rChamp&&champ&&nrm(champ)===nrm(rChamp);
   // Keep preds.champion in sync with the final result
@@ -1744,6 +1750,61 @@ function renderPremios(mc){
 
 function setChampion(t){if(isLocked())return;S.preds.champion=S.preds.champion===t?'':t;updateProgress();renderPremios(document.getElementById('mc'));}
 function setPremio(k,v){S.preds[k]=v;updateProgress();}
+
+/* ══════════════════════════════════════════════════════════
+   USER ELIM TEAM RESOLVER (for scoring)
+   Recalculates which teams appear in each elim match from
+   the user's group predictions — never relies on stored homeTeam/awayTeam
+══════════════════════════════════════════════════════════ */
+const _ALL_ELIM_MATCHES=[...R32,...R16,...QF,...SF,...FINAL,...P34];
+
+function resolveUserElimMatch(matchId, preds){
+  const matchDef=_ALL_ELIM_MATCHES.find(m=>m.id===matchId);
+  if(!matchDef) return{homeTeam:null,awayTeam:null,winner:null,loser:null};
+  const r=(preds.elim||{})[matchId];
+
+  // Recursive helper: get winner/loser of a source match from user preds
+  const resolveSrc=(src)=>{
+    if(!src) return null;
+    if(src.endsWith('_loser')){
+      const dep=resolveUserElimMatch(src.replace('_loser',''),preds);
+      return dep?.loser||null;
+    }
+    const dep=resolveUserElimMatch(src,preds);
+    return dep?.winner||null;
+  };
+
+  let homeTeam=null,awayTeam=null;
+  // Resolve home team
+  if(matchDef.home){
+    homeTeam=resolveCode(matchDef.home,preds.groups||{},preds.tiebreaks||{},preds.elim||{});
+  } else if(matchDef.srcA){
+    homeTeam=resolveSrc(matchDef.srcA);
+  }
+  // Resolve away team
+  if(matchDef.away&&!matchDef.away.startsWith('T3_')){
+    awayTeam=resolveCode(matchDef.away,preds.groups||{},preds.tiebreaks||{},preds.elim||{});
+  } else if(matchDef.away&&matchDef.away.startsWith('T3_')){
+    const asgn=computeT3Assignments(preds.groups||{},preds.tiebreaks||{});
+    awayTeam=asgn[matchId]||null;
+  }
+  if(!awayTeam&&matchDef.srcB) awayTeam=resolveSrc(matchDef.srcB);
+
+  // If no score recorded, return teams without winner
+  if(!r||r.home===''||r.home===null||r.home===undefined||r.away===''||r.away===null||r.away===undefined){
+    return{homeTeam,awayTeam,winner:null,loser:null};
+  }
+  const h=parseInt(r.home),a=parseInt(r.away);
+  if(isNaN(h)||isNaN(a)) return{homeTeam,awayTeam,winner:null,loser:null};
+
+  let winner=null,loser=null;
+  if(h>a){winner=homeTeam;loser=awayTeam;}
+  else if(a>h){winner=awayTeam;loser=homeTeam;}
+  else if(r.pen==='home'){winner=homeTeam;loser=awayTeam;}
+  else if(r.pen==='away'){winner=awayTeam;loser=homeTeam;}
+
+  return{homeTeam,awayTeam,winner,loser};
+}
 
 /* ══════════════════════════════════════════════════════════
    SCORING ENGINE
@@ -1821,18 +1882,23 @@ function calcScore(preds,results){
         const p=scorePoints(pr,re);
         if(p>0){pts+=p;breakdown[m.id+'_s']=p;}
       }
-      // Classification points — only if real winner is known
+      // Classification points — recalculate teams from user's group preds
+      // (never rely on stored homeTeam/awayTeam which are stripped on save)
       if(phasePts>0){
         const rW=getElimResult(m.id,rElim,'winner');
-        const pW=getElimResult(m.id,preds.elim||{},'winner');
-        if(rW&&pW&&rW===pW){pts+=phasePts;breakdown[m.id+'_c']=phasePts;}
+        if(rW){
+          const pMatch=resolveUserElimMatch(m.id,preds);
+          const pW=pMatch?.winner||null;
+          if(pW&&rW===pW){pts+=phasePts;breakdown[m.id+'_c']=phasePts;}
+        }
       }
     });
   });
 
   // ── Champion (only if real winner of final is known) ──
-  const predChamp=getElimResult('m104',preds.elim||{},'winner')||'';
   const realChamp=getElimResult('m104',rElim,'winner')||results.champion||'';
+  const predChampMatch=resolveUserElimMatch('m104',preds);
+  const predChamp=predChampMatch?.winner||'';
   if(realChamp&&predChamp&&nrm(predChamp)===nrm(realChamp)){pts+=PTS.champion;breakdown['champion']=PTS.champion;}
 
   // ── Premios (only if real value is set) ──
@@ -1954,7 +2020,7 @@ function renderClasif(mc){
       const pos=i+1;
       const pc=pos===1?'g':pos===2?'s':pos===3?'b':'';
       const medal=pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':pos;
-      const champ=getElimResult('m104',u.preds?.elim||{},'winner')||u.preds?.champion||'';
+      const champ=resolveUserElimMatch('m104',u.preds||{})?.winner||u.preds?.champion||'';
       const pct=calcUserProgress(u.preds);
       html+=`<div class="rank-card${isMe?' me':''}">
         <div class="rank-pos ${pc}">${medal}</div>
@@ -1986,6 +2052,40 @@ async function togglePaid(userId){
     await fbSet('users',userId,{paid:newPaid});
     toast(newPaid?'✅ Marcado como pagado':'Marcado como pendiente');
   }catch(e){toast('Error: '+e.message,'err');}
+}
+
+/* ══════════════════════════════════════════════════════════
+   MANUAL TEAM OVERRIDE
+══════════════════════════════════════════════════════════ */
+function startEditMatch(matchId){
+  S._editingMatch=S._editingMatch===matchId?null:matchId;
+  renderAdmin(document.getElementById('mc'));
+}
+function cancelEditMatch(){
+  S._editingMatch=null;
+  renderAdmin(document.getElementById('mc'));
+}
+function setManualTeams(matchId){
+  const home=document.getElementById('mh_'+matchId)?.value;
+  const away=document.getElementById('ma_'+matchId)?.value;
+  if(!home||!away){toast('Selecciona ambos equipos','err');return;}
+  if(home===away){toast('Los dos equipos no pueden ser el mismo','err');return;}
+  if(!S.results.elim[matchId]) S.results.elim[matchId]={home:'',away:'',pen:null};
+  S.results.elim[matchId].homeTeam=home;
+  S.results.elim[matchId].awayTeam=away;
+  S.results.elim[matchId].manualTeams=true;
+  S._editingMatch=null;
+  toast('✅ Equipos actualizados — guarda para confirmar');
+  renderAdmin(document.getElementById('mc'));
+}
+function clearManualTeams(matchId){
+  if(S.results.elim[matchId]){
+    delete S.results.elim[matchId].manualTeams;
+    S.results.elim[matchId].homeTeam=null;
+    S.results.elim[matchId].awayTeam=null;
+  }
+  S._editingMatch=null;
+  renderAdmin(document.getElementById('mc'));
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -2164,30 +2264,62 @@ function adminGroupHTML(g){
 
 function adminElimMatchHTML(m){
   const r=S.results.elim?.[m.id]||{};
-  // Always recalculate teams fresh from results — never trust cached values
   let ht=null,at=null;
   const resolveSrcR=(src)=>{
     if(!src) return null;
     if(src.endsWith('_loser')) return getElimResult(src.replace('_loser',''),S.results.elim||{},'loser');
     return getElimResult(src,S.results.elim||{},'winner');
   };
-  if(m.home&&!m.home.startsWith('T3_')) ht=resolveCode(m.home,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
-  if(!ht&&m.srcA) ht=resolveSrcR(m.srcA);
-  if(m.away&&!m.away.startsWith('T3_')) at=resolveCode(m.away,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
-  else if(m.away&&m.away.startsWith('T3_')){
-    const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
-    at=assignments[m.id]||null;
+  if(r.manualTeams){
+    // Manual override — use stored teams, skip auto-calculation entirely
+    ht=r.homeTeam||null;
+    at=r.awayTeam||null;
+  } else {
+    // Auto-calculate teams
+    if(m.home&&!m.home.startsWith('T3_')) ht=resolveCode(m.home,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
+    if(!ht&&m.srcA) ht=resolveSrcR(m.srcA);
+    if(m.away&&!m.away.startsWith('T3_')) at=resolveCode(m.away,S.results.groups||{},S.results.tiebreaks||{},S.results.elim||{});
+    else if(m.away&&m.away.startsWith('T3_')){
+      const assignments=computeT3Assignments(S.results.groups||{},S.results.tiebreaks||{});
+      at=assignments[m.id]||null;
+    }
+    if(!at&&m.srcB) at=resolveSrcR(m.srcB);
+    // Store auto-calculated teams
+    if(!S.results.elim[m.id]) S.results.elim[m.id]={home:'',away:'',pen:null};
+    S.results.elim[m.id].homeTeam=ht;
+    S.results.elim[m.id].awayTeam=at;
   }
-  if(!at&&m.srcB) at=resolveSrcR(m.srcB);
-  if(!S.results.elim[m.id]) S.results.elim[m.id]={home:'',away:'',pen:null};
-  S.results.elim[m.id].homeTeam=ht;
-  S.results.elim[m.id].awayTeam=at;
   const hv=r.home!==''&&r.home!==null&&r.home!==undefined?r.home:'';
   const av=r.away!==''&&r.away!==null&&r.away!==undefined?r.away:'';
   const sign=getSign(r);
   const isDraw=sign==='X';
+  const isEditing=S._editingMatch===m.id;
+  const allTeams=Object.values(GROUPS).flat().sort();
   let html=`<div class="match-card" style="margin-bottom:6px">
-  <div class="match-header"><span class="match-label">${m.label}</span></div>
+  <div class="match-header">
+    <span class="match-label">${m.label}</span>
+    <div style="display:flex;align-items:center;gap:6px">
+      ${r.manualTeams?`<span style="font-size:9px;font-weight:700;padding:1px 5px;border:1px solid rgba(245,158,11,.4);border-radius:3px;color:var(--amber)">✏️ MANUAL</span>`:''}
+      <button onclick="startEditMatch('${m.id}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--txt-dim);cursor:pointer">${isEditing?'✗ Cerrar':'✏️ Equipos'}</button>
+      ${r.manualTeams?`<button onclick="clearManualTeams('${m.id}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--red-dim);background:rgba(239,68,68,.08);color:#fca5a5;cursor:pointer">🔄 Auto</button>`:''}
+    </div>
+  </div>
+  ${isEditing?`<div style="padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border)">
+    <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px">Seleccionar equipos manualmente:</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="mh_${m.id}" style="flex:1;min-width:140px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 8px;color:var(--txt);font-size:12px">
+        <option value="">— Local —</option>
+        ${allTeams.map(t=>`<option value="${esc(t)}"${ht===t?' selected':''}>${fl(t)} ${t}</option>`).join('')}
+      </select>
+      <span style="color:var(--txt-dim);font-weight:700">vs</span>
+      <select id="ma_${m.id}" style="flex:1;min-width:140px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 8px;color:var(--txt);font-size:12px">
+        <option value="">— Visitante —</option>
+        ${allTeams.map(t=>`<option value="${esc(t)}"${at===t?' selected':''}>${fl(t)} ${t}</option>`).join('')}
+      </select>
+      <button onclick="setManualTeams('${m.id}')" style="background:var(--green);color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;white-space:nowrap">✓ Confirmar</button>
+    </div>
+    <div style="font-size:10px;color:var(--txt-dim);margin-top:6px">⚠️ Los partidos posteriores que dependen de éste se recalcularán automáticamente.</div>
+  </div>`:''}
   <div class="match-body">
     <span class="match-flag">${ht?fl(ht):'❓'}</span>
     <span class="match-name home">${ht||'TBD'}</span>
@@ -2273,7 +2405,8 @@ async function saveResults(){
           away:v.away??null,
           pen:v.pen??null,
           homeTeam:v.homeTeam??null,
-          awayTeam:v.awayTeam??null
+          awayTeam:v.awayTeam??null,
+          manualTeams:v.manualTeams??false
         }])
       )
     });
@@ -2449,6 +2582,8 @@ Object.assign(window,{
   setGroupScore,setElimScore,setPen,setChampion,setPremio,
   setAdminGroup,setAdminElim,setAdminGroupTie,setAdminT3Tie,setAdminResult,setTorneoState,
   adminGroup,
+  startEditMatch,cancelEditMatch,setManualTeams,clearManualTeams,
+  resetUserSection,resetSection,
 });
 </script>
 </body>
