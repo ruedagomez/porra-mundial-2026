@@ -212,6 +212,23 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
 .empty-state .icon{font-size:36px;display:block;margin-bottom:8px;opacity:.5}
 .jornada-label{font-size:11px;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
 
+/* PREDS VIEWER MODAL */
+.preds-modal{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
+.preds-modal-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:640px;overflow:hidden;margin:auto}
+.preds-modal-header{background:var(--card);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.preds-modal-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1.5px;color:var(--gold)}
+.preds-modal-close{background:var(--surface);border:1px solid var(--border);color:var(--txt-dim);width:30px;height:30px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.preds-modal-body{padding:14px;max-height:80vh;overflow-y:auto}
+.preds-section{margin-bottom:14px}
+.preds-section h3{font-size:11px;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.preds-group-row{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--card);border-radius:8px;margin-bottom:4px;font-size:12px}
+.preds-group-label{font-weight:700;color:var(--gold);width:20px;flex-shrink:0}
+.preds-elim-row{display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--card);border-radius:8px;margin-bottom:3px;font-size:11px}
+.preds-elim-label{color:var(--txt-dim);min-width:90px;flex-shrink:0}
+.preds-hit{color:var(--green);font-weight:700}
+.preds-miss{color:var(--red)}
+.preds-unknown{color:var(--txt-dim);font-style:italic}
+
 /* PARTICIPANTS LIST */
 .participant-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .participant-card.me{border-color:var(--gold-dim);background:var(--gold-bg)}
@@ -282,6 +299,15 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
 </div>
 
 <div id="toast"></div>
+<div id="preds-modal" class="preds-modal hidden" onclick="if(event.target===this)closePredModal()">
+  <div class="preds-modal-box">
+    <div class="preds-modal-header">
+      <span class="preds-modal-title" id="preds-modal-title">Pronósticos</span>
+      <button class="preds-modal-close" onclick="closePredModal()">✕</button>
+    </div>
+    <div class="preds-modal-body" id="preds-modal-body"></div>
+  </div>
+</div>
 
 <!-- Firebase -->
 <script type="module">
@@ -1988,7 +2014,10 @@ function renderClasif(mc){
           <div class="progress-bar-outer"><div class="progress-bar-inner${pct===100?' full':''}" style="width:${pct}%"></div></div>
         </div>
         ${S.isAdmin
-          ?`<button class="paid-toggle" title="${isPaid?'Marcar como no pagado':'Marcar como pagado'}" onclick="togglePaid('${u.id}')">${isPaid?'✅':'⬜'}</button>`
+          ?`<div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0">
+              <button class="paid-toggle" title="${isPaid?'Marcar como no pagado':'Marcar como pagado'}" onclick="togglePaid('${u.id}')">${isPaid?'✅':'⬜'}</button>
+              <button onclick="openPredModal('${u.id}')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:0" title="Ver pronósticos">👁️</button>
+            </div>`
           :`<span class="paid-badge ${isPaid?'yes':'no'}">${isPaid?'✅ Pagado':'⏳ Pendiente'}</span>`
         }
       </div>`;
@@ -2557,6 +2586,119 @@ function renderReglas(mc){
       </div>
     </div>
   </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════
+   PREDS VIEWER (admin)
+══════════════════════════════════════════════════════════ */
+function openPredModal(userId){
+  if(!S.isAdmin) return;
+  const u=S.allUsers.find(u=>u.id===userId);
+  if(!u||!u.preds){
+    toast('Este usuario no tiene pronósticos guardados','warn');
+    return;
+  }
+  const p=u.preds;
+  const nombre=u.nombre||u.id;
+  document.getElementById('preds-modal-title').textContent=`👁️ ${nombre}`;
+  document.getElementById('preds-modal-body').innerHTML=renderUserPreds(p);
+  document.getElementById('preds-modal').classList.remove('hidden');
+}
+
+function closePredModal(){
+  document.getElementById('preds-modal').classList.add('hidden');
+}
+
+function renderUserPreds(p){
+  let html='';
+  const rGroups=S.results.groups||{};
+  const rElim=S.results.elim||{};
+
+  // ── GRUPOS ──
+  html+=`<div class="preds-section"><h3>🗂️ Fase de Grupos — clasificación pronosticada</h3>`;
+  Object.keys(GROUPS).forEach(g=>{
+    const{standings}=computeStandings(g,p.groups||{},p.tiebreaks||{});
+    const rStand=S.results.groups&&Object.keys(S.results.groups).length>0?computeStandings(g,rGroups,S.results.tiebreaks||{}).standings:null;
+    const p1=standings[0]?.name||'—';
+    const p2=standings[1]?.name||'—';
+    const p3=standings[2]?.name||'—';
+    const r1=rStand?.[0]?.name;const r2=rStand?.[1]?.name;
+    const hit1=r1&&r1===p1;const hit2=r2&&r2===p2;
+    html+=`<div class="preds-group-row">
+      <span class="preds-group-label">${g}</span>
+      <span class="pos-badge p1">1</span>
+      <span class="${r1?(hit1?'preds-hit':'preds-miss'):''}"> ${fl(p1)} ${p1}</span>
+      <span class="pos-badge p2" style="margin-left:8px">2</span>
+      <span class="${r2?(hit2?'preds-hit':'preds-miss'):''}"> ${fl(p2)} ${p2}</span>
+      <span style="color:var(--txt-dim);font-size:10px;margin-left:auto">3º ${fl(p3)} ${p3}</span>
+    </div>`;
+  });
+  html+=`</div>`;
+
+  // ── TERCEROS ──
+  const top8=getTop8Thirds(p.groups||{},p.tiebreaks||{});
+  const rTop8=getTop8Thirds(rGroups,S.results.tiebreaks||{});
+  const rTop8names=new Set(rTop8.map(t=>t.team));
+  if(top8.length>0){
+    html+=`<div class="preds-section"><h3>🎯 Mejores Terceros pronosticados</h3><div style="display:flex;flex-wrap:wrap;gap:5px">`;
+    top8.forEach((t,i)=>{
+      const hit=rTop8names.has(t.team);
+      html+=`<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--card);border:1px solid ${rTop8.length>0?(hit?'var(--green-dim)':'var(--red-dim)'):'var(--border)'};color:${rTop8.length>0?(hit?'var(--green)':'#fca5a5'):'var(--txt)'}">${fl(t.team)} ${t.team} <span style="color:var(--txt-dim)">(G.${t.group})</span></span>`;
+    });
+    html+=`</div></div>`;
+  }
+
+  // ── ELIMINATORIAS ──
+  html+=`<div class="preds-section"><h3>🏟️ Eliminatorias — clasificados pronosticados</h3>`;
+  ELIM_PHASES.forEach(({phase,label,pts,matches})=>{
+    if(pts===0&&phase==='p34') return; // skip 3rd place for display
+    html+=`<div style="font-size:10px;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">${label}</div>`;
+    matches.forEach(m=>{
+      const pr=p.elim?.[m.id];
+      if(!pr||pr.home===''||pr.home===null||pr.away===''||pr.away===null){
+        html+=`<div class="preds-elim-row"><span class="preds-elim-label">${m.label}</span><span class="preds-unknown">Sin pronosticar</span></div>`;
+        return;
+      }
+      // Resolve predicted winner using the engine
+      const pMatch=resolveUserElimMatch(m.id,p);
+      const predWinner=pMatch?.winner||null;
+      const predHome=pMatch?.homeTeam||'?';
+      const predAway=pMatch?.awayTeam||'?';
+      const rW=getElimResult(m.id,rElim,'winner');
+      const hit=rW&&predWinner&&rW===predWinner;
+      const sign=getSign(pr);
+      const scoreStr=pr.home!==null&&pr.home!==''&&pr.away!==null&&pr.away!==''?`${pr.home}–${pr.away}${sign==='X'&&pr.pen?` (pen. ${pr.pen==='home'?predHome:predAway})`:''}`:'-';
+      html+=`<div class="preds-elim-row">
+        <span class="preds-elim-label">${m.label}</span>
+        <span style="flex:1">${fl(predHome)} ${predHome} <strong>${scoreStr}</strong> ${fl(predAway)} ${predAway}</span>
+        ${predWinner?`<span class="${rW?(hit?'preds-hit':'preds-miss'):''}">→ ${fl(predWinner)} ${predWinner}${rW?(hit?' ✅':' ✗'):''}</span>`:''}
+      </div>`;
+    });
+  });
+  html+=`</div>`;
+
+  // ── PREMIOS ──
+  html+=`<div class="preds-section"><h3>🏅 Premios</h3>`;
+  const champ=resolveUserElimMatch('m104',p)?.winner||p.champion||'';
+  const rChamp=getElimResult('m104',rElim,'winner')||S.results.champion||'';
+  const champHit=rChamp&&champ&&nrm(champ)===nrm(rChamp);
+  html+=`<div class="preds-elim-row"><span class="preds-elim-label">🏆 Campeón</span><span class="${rChamp?(champHit?'preds-hit':'preds-miss'):''}${!champ?' preds-unknown':''}">${champ?`${fl(champ)} ${champ}`:'Sin rellenar'}${rChamp?(champHit?' ✅':' ✗'):''}</span></div>`;
+  [{k:'balon',label:'Balón de Oro'},{k:'maxGolEsp',label:'Goleador España'},{k:'mejorJoven',label:'Mejor Joven'},{k:'maxGolesGol',label:'Goles pichichi'}].forEach(({k,label})=>{
+    const val=p[k]||'';
+    const rVal=S.results[k]||'';
+    const hit=rVal&&val&&nrm(String(val))===nrm(String(rVal));
+    html+=`<div class="preds-elim-row"><span class="preds-elim-label">${label}</span><span class="${rVal?(hit?'preds-hit':'preds-miss'):''}${!val?' preds-unknown':''}">${val||'Sin rellenar'}${rVal?(hit?' ✅':' ✗'):''}</span></div>`;
+  });
+  html+=`</div>`;
+
+  // ── PUNTUACIÓN ACTUAL ──
+  const{pts,breakdown}=calcScore(p,S.results);
+  html+=`<div style="background:var(--gold-bg);border:1px solid var(--gold-dim);border-radius:var(--radius);padding:12px 14px;text-align:center">
+    <div style="font-size:11px;color:var(--txt-dim);text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px">Puntuación actual</div>
+    <div style="font-size:32px;font-weight:700;color:var(--gold)">${pts} pts</div>
+  </div>`;
+
+  return html;
 }
 
 /* ══════════════════════════════════════════════════════════
